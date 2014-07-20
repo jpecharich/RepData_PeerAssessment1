@@ -1,0 +1,233 @@
+Reproducible Research Peer Assessment 1
+========================================================
+## Loading and preprocessing the data
+
+
+We will first load the data into a data frame that we call activity.
+
+```{r}
+activity <- read.csv("~/Desktop/DataTrack/ReproducibleResearch/Assignment1/activity.csv",
+               colClass=c("integer","character","integer"))
+```
+
+We have not done any processing here other than to assign classes to the columns. 
+
+## What is mean total number of steps taken per day?
+
+The data contains many entries that are marked as **NA**. For the first part of assignment we will omit those entries using the **complete.cases** command. We also rename the data frame **activityNA**.
+
+```{r}
+activityNA<-activity[complete.cases(activity),]
+```
+
+We now want to construct a histogram which displays the frequency of the total number of steps per day. To do this we use the function **ddply**, which requires the package **plyr**. This function will subset **activityNA** by the date perform the function **sum** on the number of steps, and then recombine everything into a new data frame that we call **Daily_Sum**. 
+
+```{r}
+library(plyr)
+Daily_Sum<-ddply(activityNA,.(date),summarize,steps=sum(steps))
+```
+Here is the histogram which shows the frequency of the total number of steps per day. 
+```{r}
+hist(Daily_Sum$steps,breaks=20,xlab="Steps",main="Total Steps per Day")
+```
+
+To calculate the daily mean and daily median we again use the function **ddply**, but this time we apply the function **mean** and **median** inside of **ddply**. 
+
+```{r}
+Daily_Mean<-ddply(activityNA, .(date), summarize, daily_mean_steps=mean(steps))
+Daily_Median<-ddply(activityNA, .(date), summarize, daily_median_steps=median(steps))
+```
+
+Here is a print out of the mean number of steps per five minute interval by the day. 
+```{r}
+Daily_Mean
+```
+
+Here is a print out of the median number of steps per five minute interval by the day. 
+
+```{r}
+Daily_Median
+```
+Note that some days are acutally *missing* since every five interval during that day contained the value of **NA**. We have also included a time series plot by day for both the mean and the median. But first we must convert the date, which is currently a character to an acutal date, using the function **as.Date()**.
+```{r, fig.width=11}
+Daily_Mean$date<-as.Date(Daily_Mean$date)
+Daily_Median$date<-as.Date(Daily_Median$date)
+
+par(mfrow=c(1,2))
+plot(Daily_Mean$date,Daily_Mean$daily_mean_steps,type="l",xlab="Date",ylab="Steps")
+title("Mean Steps per Day")
+plot(Daily_Median$date,Daily_Median$daily_median_steps,type="l",xlab="Date",ylab="Steps")
+title("Median Steps per Day")
+```
+
+## What is the average daily activity pattern?
+
+To calculate the mean number of steps by interval we use **ddply** again but instead we split the data frame by intervals. 
+
+```{r}
+Interval_Mean<-ddply(activityNA, .(interval), summarize, interval_mean_steps=mean(steps))
+```
+
+The time series plot is graphed below with the interval on the horizontal axis and the mean number of steps on the vertical axis.
+```{r}
+plot(Interval_Mean$interval,Interval_Mean$interval_mean_steps,type="l",
+     xlab="Interval",ylab="Steps",main="Mean number of Steps by Interval")
+```
+
+In order to find out which interval as the highest mean number of steps we order the data frame **Interval_Mean** by the entry **interval_mean_steps** using the function **order**.
+```{r}
+Order_Interval<-Interval_Mean[order(-Interval_Mean$interval_mean_steps),]
+```
+
+We now display the first row of **Order_Interval**
+```{r}
+Order_Interval[1,]
+```
+
+Therefore we see that interval **835** on average contained the most number of steps per day.
+
+## Imputing missing values
+To calculate the number of **NA** rows we use the **complete.cases** command and then **sum**. Therefore the number of missing values is:
+```{r}
+print(nrow(activity)-sum(complete.cases(activity)))
+```
+
+To impute the missing data we have chosen the scheme that replaces the **NA** with the *mean* for that 5-minute interval. In order to do that we need to first calculate the mean for each 5-minute interval, again we use the function **ddply**.
+```{r}
+Interval_Mean<-ddply(activityNA, .(interval), summarize, interval_mean_steps=mean(steps))
+```
+
+We now create a vector which stores the means for each 5-minute interval.
+```{r}
+MEANS<-Interval_Mean$interval_mean_steps
+```
+
+The next thing to do is split original data frame by 5-minute interval. This will create a *list* of data frames, one for each 5-minute interval. 
+
+```{r}
+SplitNA<-split(activity,activity$interval)
+```
+
+Then run a *for* loop to go through each 5-minute interval, and then on each 5-minute interval we run another *for* loop through the entry that contains the number of steps to check to see if it is **NA**. If the value is **NA** we replace it by the mean for that 5-minute interval.  
+
+```{r}
+for(j in 1:length(SplitNA)){
+        for(k in 1:length(SplitNA[[j]]$steps)){
+                if(is.na(SplitNA[[j]]$steps[k])==TRUE)
+                        SplitNA[[j]]$steps[k]<-MEANS[j]
+        }
+}
+```
+
+We now merge this list of data frames into a single data frame using the function **merge_all**, which requires the package **reshape**. This will equal the original data frame but now all the **NA** values have been replaced by the mean for that 5-minute interval. This operation takes quite a bit of time so we have set **cache=TRUE**. We have called the new data frame **Replace**.
+```{r,cache=TRUE}
+library(reshape)
+Replace<-merge_all(SplitNA)
+```
+
+To plot the histogram we use the same scheme as above, but instead use the **Replace** data frame.
+```{r}
+Replace_Sum<-ddply(Replace,.(date),summarize,steps=sum(steps))
+hist(Replace_Sum$steps,breaks=20,xlab="Steps",main="Total Steps per Day")
+```
+
+We calculate the mean and the median of the Replace data frame in the same way as above. 
+
+```{r}
+Replace_Mean<-ddply(Replace, .(date), summarize, daily_mean_steps=mean(steps))
+Replace_Median<-ddply(Replace, .(date), summarize, daily_median_steps=median(steps))
+```
+Here is a print out of the mean number of steps per five minute interval by the day with the replaced **NA** values. 
+```{r}
+Replace_Mean
+```
+
+Here is a print out of the median number of steps per five minute interval by the day with the replaced **NA** values. 
+```{r}
+Replace_Median
+```
+
+Before we replaced the **NA** values the median for each day was 0, but after replacement the median for some days went to 34.11. In fact, the days where the median changed correspond precisely to the days where every entry was an **NA** value. Hence, the value 34.11 is the median of the mean over the 5-minute intervals.
+
+It is a little more difficult to compare the data for the mean so we will instead graph them in a time series plot. We will first make two time series plots, one has the **NA** values included and other has the replaced **NA** values. 
+```{r,fig.width=11}
+Daily_MeanNA<-ddply(activity, .(date), summarize, daily_mean_steps=mean(steps))
+Daily_MeanNA$date<-as.Date(Daily_MeanNA$date)
+Replace_Mean$date<-as.Date(Replace_Mean$date)
+
+par(mfrow=c(1,2))
+plot(Daily_MeanNA$date,Daily_MeanNA$daily_mean_steps,type="l",xlab="Date",ylab="Steps",col="blue",
+     main="Mean Steps per Day (with NA)")
+plot(Replace_Mean$date,Replace_Mean$daily_mean_steps,type="l",xlab="Date",ylab="Steps",col="red",
+     main="Mean Steps per Day (Replaced)")
+```
+
+These graphs appear to be the same when both graphs are defined. To see that they are almost indistinguishable we will graph them on the same plot.
+
+```{r}
+plot(Daily_MeanNA$date,Daily_MeanNA$daily_mean_steps,type="l",xlab="Date",ylab="Steps",col="blue")
+par(new=T)
+plot(Replace_Mean$date,Replace_Mean$daily_mean_steps,type="l",xlab="Date",ylab="Steps",col="red" )
+```
+
+From this graph we can conclude that replacing the **NA** values with the mean for that 5-minute interval has the effect of filling in the gaps in the graph if we keep the **NA** values.
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+
+To see the difference between the activity patterns during the weekdays and weekends we first create two character vectors which store the names of the weekdays and weekends. 
+```{r}
+weekday<-c("Monday","Tuesday","Wednesday","Thursday","Friday")
+weekend<-c("Saturday","Sunday")
+```
+
+We have chosen to use the data frame **Replace**, which has all the **NA** values replaced with the mean of that 5-minute interval. We now convert the character dates of the **Replace** data frame to R dates.
+
+```{r}
+Replace$date<-as.Date(Replace$date)
+```
+
+The basic scheme that we employ here is to figure out which days are weekdays and which are weekends. We then separate them into two different data frames. This could probably be done using an R function, but I don't really know which function this is yet. So instead I have taken a lower level way of doing this using a *for* loop. We first create two empty data frames, one for the weekdays and one for the weekends, each with 3 columns. These will be filled using the *for* loop below.
+
+```{r}
+activityWeekday<-data.frame(matrix(,nrow=0,ncol=3))
+activityWeekend<-data.frame(matrix(,nrow=0,ncol=3))
+```
+
+
+The following *for* loop runs through the vector **Replace$date** and tests to see if that date is a weekday or weekend using the **weekdays()** command. If **weekdays(Replace$date[i]) %in% weekday==TRUE**, i.e., that date is a weekday, then it puts that entry into the data frame **activityWeekday** using the **rbind()** function, otherwise it puts that entry into the data frame **activeityWeekend** using the **rbind()** function. This process takes some time so we have again set **cache=TRUE**.
+```{r, cache=TRUE}
+for(i in 1:length(Replace$date)){
+        if(weekdays(Replace$date[i]) %in% weekday ==TRUE){
+                activityWeekday<-rbind(activityWeekday,Replace[i,])
+                
+        }
+        else{
+                activityWeekend<-rbind(activityWeekend,Replace[i,])
+        }
+}
+
+```
+
+To calculate the mean number of steps per 5-minute interval we use the **ddply** functions as above, but instead to the data frames **activityWeekday** and **activityWeekend**.
+
+```{r}
+activityWeekday_Mean<-ddply(activityWeekday, .(interval), summarize, daily_mean_steps=mean(steps))
+activityWeekend_Mean<-ddply(activityWeekend, .(interval), summarize, daily_mean_steps=mean(steps))
+```
+
+We now graph, using the base plotting system, the mean number of steps for each 5-minute interval during the weekday and weekend. We have also set the range of the vertical axes to be 0 to 230 steps for both plots. 
+
+```{r,fig.height=11,fig.width=11}
+par(mfrow=c(2,1))
+plot(activityWeekday_Mean$interval,activityWeekday_Mean$daily_mean_steps,type="l",xlab="Interval",
+     ylab="Steps", ylim=c(0,230),
+     main="Mean Steps per 5-minute Interval (Weekday)")
+
+plot(activityWeekend_Mean$interval,activityWeekend_Mean$daily_mean_steps,type="l",xlab="Interval",
+     ylab="Steps", ylim=c(0,230),
+     main="Mean Steps per 5-minute Interval (Weekend)")
+```
+
+By looking at the 2 graphs we can see during the weekday this person slept until 5:00 AM and then was very active until about 10:00 AM. After 10:00 AM the person sporadically walked throughout the day. Around 8:00 PM this person then settled down and did not walk very much. It can probably be concluded that this person has some sort of job from 10:00 AM-5:00 PM during the weekdays. During the weekend it seems this person still woke up at 5:00 AM on some days but later on other days. They were very active throughout the entire day until about 10:00 PM. However, it should be noted that the greatest number of steps during any 5 minute interval split between the weekday and weekend occured during the weekday. 
+
